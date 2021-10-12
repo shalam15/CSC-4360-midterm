@@ -1,29 +1,53 @@
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { StyleSheet, Text, View,  } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { AuthContext } from "./context";
+import { Input, Button, Card } from "react-native-elements";
 import {
-  Input,
-  Button
-} from 'react-native-elements';
-import Firebase from "./firebase";
+  FirebaseRecaptchaVerifierModal,
+  FirebaseRecaptchaBanner,
+} from "expo-firebase-recaptcha";
+import * as Facebook from 'expo-facebook';
+import * as GoogleSignIn from 'expo-google-sign-in'
+
+// import Firebase from "./firebase";
+import * as Firebase from "firebase";
+// import firebase from 'firebase/app'
+// import 'firebase/auth';
+// import 'firebase/firestore'
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyAdk5AMV0V5PGiniIKlygxTc-GSXqEtL4A",
+  authDomain: "fanpage-app-af01d.firebaseapp.com",
+  projectId: "fanpage-app-af01d",
+  storageBucket: "fanpage-app-af01d.appspot.com",
+  messagingSenderId: "26984943290",
+  appId: "1:26984943290:web:5b2ce7192214e45e24bc83",
+};
+Firebase.initializeApp(firebaseConfig);
 export default function App() {
   const [user, setUser] = React.useState(null);
   const AuthStack = createStackNavigator();
-  
+
   // const  PhoneSignIn = ()=> {
   //   // If null, no SMS has been sent
   //   const [confirm, setConfirm] = React.useState(null);
   //   const [code, setCode] = React.useState('');
-  
+
   //   // Handle the button press
   //   async function signInWithPhoneNumber(phoneNumber) {
   //     const confirmation = await Firebase.auth().signInWithPhoneNumber(phoneNumber);
   //     setConfirm(confirmation);
   //   }
-  
+
   //   async function confirmCode() {
   //     try {
   //       await confirm.confirm(code);
@@ -31,7 +55,7 @@ export default function App() {
   //       console.log('Invalid code.');
   //     }
   //   }
-  
+
   //   if (!confirm) {
   //     return (
   //       <Button
@@ -40,7 +64,7 @@ export default function App() {
   //       />
   //     );
   //   }
-  
+
   //   return (
   //     <>
   //       <TextInput value={code} onChangeText={text => setCode(text)} />
@@ -48,13 +72,18 @@ export default function App() {
   //     </>
   //   );
   // }
- 
+
   const AuthStackScreen = (user) => {
     return (
       <AuthStack.Navigator initialRouteName="Home">
         <AuthStack.Screen name="Home" component={Home} />
         <AuthStack.Screen name="Home2" component={Home} />
-        <AuthStack.Screen name="PhoneSignInScreen" component={PhoneSignInScreen} />
+        <AuthStack.Screen
+          name="PhoneSignInScreen"
+          component={PhoneSignInScreen}
+        />
+        <AuthStack.Screen name="EmailAndPassword" component={EmailAndPassword}/>
+        <AuthStack.Screen name="LoggedIn" component={LoggedInScreen} />
       </AuthStack.Navigator>
     );
   };
@@ -62,7 +91,7 @@ export default function App() {
   // State management using React hooks/ Context
   const authContext = React.useMemo(() => {
     return {
-      signinWithEmailAndPass: () =>{
+      signinWithEmailAndPass: () => {
         Firebase.auth()
           .signInWithEmailAndPassword(props.emailAddress, props.password)
           .then((res) => {
@@ -79,28 +108,18 @@ export default function App() {
               }
             });
           })
-          .catch((error) =>
-          {
+          .catch((error) => {
             Alert.alert(
-              'Wrong credentials',
-              '', // <- this part is optional, you can pass an empty string
-              [
-                {text: 'OK', onPress: () => console.log('OK Pressed')},
-              ],
-              {cancelable: false},
+              "Wrong credentials",
+              "", // <- this part is optional, you can pass an empty string
+              [{ text: "OK", onPress: () => console.log("OK Pressed") }],
+              { cancelable: false }
             );
-            console.log("unable to login through fireabser", error)
+            console.log("unable to login through fireabser", error);
+          });
+      },
 
-          }
-            
-          );
-      }, 
-
-      signInWithEmailOnly: ()=>{
-
-      }
-
-
+      signInWithEmailOnly: () => {},
     };
   }, []);
 
@@ -108,7 +127,7 @@ export default function App() {
     <AuthContext.Provider value={authContext}>
       <NavigationContainer>
         {/* <RootStackScreen user={user} /> */}
-        <AuthStackScreen user={user}/>
+        <AuthStackScreen user={user} />
       </NavigationContainer>
     </AuthContext.Provider>
   );
@@ -125,7 +144,7 @@ export const Home = ({ navigation }) => {
       <Button
         title="Email and Password"
         onPress={() =>
-          navigation.navigate("Home2", { name: "React Native School" })
+          navigation.navigate("EmailAndPassword", { name: "React Native School" })
         }
       />
       <Button
@@ -162,42 +181,223 @@ export const Home = ({ navigation }) => {
   );
 };
 
-export const PhoneSignInScreen = ({ navigation }) =>{
-  const [phone, setPhone] = React.useState(' ');
-  const [confirm, setConfirm] = React.useState(null);
-  const [code, setCode] = React.useState('');
-  
-  // Handle the button press
-  async function signInWithPhoneNumber(phoneNumber) {
-  const confirmation = await Firebase.auth().signInWithPhoneNumber(phoneNumber);
-  setConfirm(confirmation)
-  console.log(confirmation);
-  }
+export const LoggedInScreen = ({ navigation }) => {
   return (
     <ScreenContainer>
+      <Text>Logged In</Text>
+      <Button
+        title="Anonymous"
+        onPress={() => {
+          Firebase.auth()
+            .signOut()
+            .then(() => console.log("User signed out!"))
+            .catch((error) => console.log(error));
+          navigation.push("Home", { name: "React Native School" });
+        }}
+      />
+    </ScreenContainer>
+  );
+};
+
+export const PhoneSignInScreen = ({ navigation }) => {
+  const recaptchaVerifier = React.useRef(null);
+  const [phoneNumber, setPhoneNumber] = React.useState();
+  const [verificationId, setVerificationId] = React.useState();
+  const [verificationCode, setVerificationCode] = React.useState();
+  const [message, showMessage] = React.useState(
+    !firebaseConfig || Platform.OS === "web"
+      ? {
+          text: "To get started, provide a valid firebase config in App.js and open this snack on an iOS or Android device.",
+        }
+      : undefined
+  );
+  const attemptInvisibleVerification = false;
+
+  return (
+    <ScreenContainer>
+      <View style={{ padding: 20, marginTop: 50 }}>
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifier}
+          firebaseConfig={firebaseConfig}
+          attemptInvisibleVerification={attemptInvisibleVerification}
+        />
+        <Text style={{ marginTop: 20 }}>Enter phone number</Text>
+        <TextInput
+          style={{ marginVertical: 10, fontSize: 17 }}
+          placeholder="+1 999 999 9999"
+          autoFocus
+          autoCompleteType="tel"
+          keyboardType="phone-pad"
+          textContentType="telephoneNumber"
+          onChangeText={(phoneNumber) => setPhoneNumber(phoneNumber)}
+        />
+        <Button
+          title="Send Verification Code"
+          disabled={!phoneNumber}
+          onPress={async () => {
+            // The FirebaseRecaptchaVerifierModal ref implements the
+            // FirebaseAuthApplicationVerifier interface and can be
+            // passed directly to `verifyPhoneNumber`.
+            try {
+              const phoneProvider = new Firebase.auth.PhoneAuthProvider();
+              const verificationId = await phoneProvider.verifyPhoneNumber(
+                phoneNumber,
+                recaptchaVerifier.current
+              );
+              setVerificationId(verificationId);
+              showMessage({
+                text: "Verification code has been sent to your phone.",
+              });
+            } catch (err) {
+              showMessage({ text: `Error: ${err.message}`, color: "red" });
+            }
+          }}
+        />
+        <Text style={{ marginTop: 20 }}>Enter Verification code</Text>
+        <TextInput
+          style={{ marginVertical: 10, fontSize: 17 }}
+          editable={!!verificationId}
+          placeholder="123456"
+          onChangeText={setVerificationCode}
+        />
+        <Button
+          title="Confirm Verification Code"
+          disabled={!verificationId}
+          onPress={async () => {
+            try {
+              const credential = Firebase.auth.PhoneAuthProvider.credential(
+                verificationId,
+                verificationCode
+              );
+              await Firebase.auth().signInWithCredential(credential);
+              showMessage({ text: "Phone authentication successful 👍" });
+              navigation.push("LoggedIn", { name: "Logged" });
+            } catch (err) {
+              showMessage({ text: `Error: ${err.message}`, color: "red" });
+            }
+          }}
+        />
+        {message ? (
+          <TouchableOpacity
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: 0xffffffee, justifyContent: "center" },
+            ]}
+            onPress={() => showMessage(undefined)}
+          >
+            <Text
+              style={{
+                color: message.color || "blue",
+                fontSize: 17,
+                textAlign: "center",
+                margin: 20,
+              }}
+            >
+              {message.text}
+            </Text>
+          </TouchableOpacity>
+        ) : undefined}
+        {attemptInvisibleVerification && <FirebaseRecaptchaBanner />}
+      </View>
+    </ScreenContainer>
+  );
+};
+export const EmailAndPassword = ({ navigation }) => {
+  const [emailAddress, setemailAddress] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [SignUpErrors, setSignUpErrors] = React.useState({});
+  const [user, setUser] = React.useState(null);
+
+  return (
+    <ScreenContainer>
+      <View>
+        <Card>
           <Input
-            label={"Phone"}
-            placeholder="Phone"
-            value={phone}
-            onChangeText={setPhone}
+            label={"Email"}
+            placeholder="Email"
+            value={emailAddress}
+            onChangeText={setemailAddress}
+            errorStyle={{ color: "red" }}
+            errorMessage={SignUpErrors ? SignUpErrors.email : null}
+          />
+          <Input
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            errorStyle={{ color: "red" }}
+            errorMessage={SignUpErrors ? SignUpErrors.password : null}
           />
           <Button
             buttonStyle={{ margin: 10, marginTop: 50 }}
             title="Sign in"
-            onPress={() => signInWithPhoneNumber(phone)}
+            onPress={() => {
+              Firebase.auth()
+                .signInWithEmailAndPassword(emailAddress, password)
+                .then((res) => {
+                  console.log("User logged-in  to firebase successfully!");
+                  setUser(user);
+                  Firebase.auth().onAuthStateChanged(function (user) {
+                    if (user) {
+                      // User is signed in.
+                    setUser(user);
+
+                      navigation.navigate("LoggedIn")
+                      console.log(user.uid);
+                    } else {
+                      // No user is signed in.
+                  console.log("User Does not exist");
+                  setUser(null);
+
+                    }
+                  });
+                })
+                .catch((error) => {
+                  Alert.alert(
+                    "Wrong credentials",
+                    "", // <- this part is optional, you can pass an empty string
+                    [{ text: "OK", onPress: () => console.log("OK Pressed") }],
+                    { cancelable: false }
+                  );
+                  console.log("unable to login through fireabser", error);
+                });
+            }}
           />
           <Text
             style={{ marginLeft: 100 }}
             onPress={() => {
-              navigation.push("Home");
+              navigation.navigate("Signup");
             }}
           >
             No Acount? Sign Up
           </Text>
+        </Card>
+      </View>
     </ScreenContainer>
-    
   );
 };
+
+export const FaceBookSignin=({navigation})=>{
+  try {
+    const { type, token } = await Facebook.logInWithReadPermissionsAsync('684399708713036', {
+      permissions: ['public_profile'],
+    });
+    if (type === 'success') {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      const credential = firebase.auth.FacebookAuthProvider.credential(token);
+      const facebookProfileData = await firebase.auth().signInWithCredential(credential);
+      this.onLoginSuccess.bind(this)
+    }
+  } catch ({ message }) {
+    alert(`Facebook Login Error: ${message}`);
+  }
+
+  return(
+    <ScreenContainer>
+
+    </ScreenContainer>
+  )
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
