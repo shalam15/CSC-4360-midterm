@@ -15,15 +15,21 @@ import {
   FirebaseRecaptchaVerifierModal,
   FirebaseRecaptchaBanner,
 } from "expo-firebase-recaptcha";
-import * as Facebook from 'expo-facebook';
-import * as GoogleSignIn from 'expo-google-sign-in'
+import * as Facebook from "expo-facebook";
+
+import * as GoogleAuthentication from "expo-google-app-auth";
+// import * as GoogleSignIn from "expo-google-sign-in";
+// import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import * as AppAuth from "expo-app-auth";
 
 // import Firebase from "./firebase";
 import * as Firebase from "firebase";
+
 // import firebase from 'firebase/app'
 // import 'firebase/auth';
 // import 'firebase/firestore'
 // Your web app's Firebase configuration
+
 const firebaseConfig = {
   apiKey: "AIzaSyAdk5AMV0V5PGiniIKlygxTc-GSXqEtL4A",
   authDomain: "fanpage-app-af01d.firebaseapp.com",
@@ -33,45 +39,47 @@ const firebaseConfig = {
   appId: "1:26984943290:web:5b2ce7192214e45e24bc83",
 };
 Firebase.initializeApp(firebaseConfig);
+
+const doSome = (uid, firstName, lastName, userEmail) => {
+  Firebase.firestore()
+    .collection("allusers")
+    .add({
+      uid: uid,
+      email: userEmail,
+      firstName: firstName,
+      lastName: lastName,
+      datetime: new Date(),
+      userRole: "customer",
+    })
+    .then((res) => {
+      console.log("User Creted in firestore");
+    })
+    .catch((error) => {
+      Alert.alert("Error creating user", [
+        {
+          text: "OK",
+          onPress: () => console.log(error),
+          style: "cancel",
+        },
+      ]);
+    });
+};
+
 export default function App() {
   const [user, setUser] = React.useState(null);
   const AuthStack = createStackNavigator();
-
-  // const  PhoneSignIn = ()=> {
-  //   // If null, no SMS has been sent
-  //   const [confirm, setConfirm] = React.useState(null);
-  //   const [code, setCode] = React.useState('');
-
-  //   // Handle the button press
-  //   async function signInWithPhoneNumber(phoneNumber) {
-  //     const confirmation = await Firebase.auth().signInWithPhoneNumber(phoneNumber);
-  //     setConfirm(confirmation);
-  //   }
-
-  //   async function confirmCode() {
-  //     try {
-  //       await confirm.confirm(code);
-  //     } catch (error) {
-  //       console.log('Invalid code.');
-  //     }
-  //   }
-
-  //   if (!confirm) {
-  //     return (
-  //       <Button
-  //         title="Phone Number Sign In"
-  //         onPress={() => signInWithPhoneNumber('+1 650-555-3434')}
-  //       />
-  //     );
-  //   }
-
-  //   return (
-  //     <>
-  //       <TextInput value={code} onChangeText={text => setCode(text)} />
-  //       <Button title="Confirm Code" onPress={() => confirmCode()} />
-  //     </>
-  //   );
-  // }
+  Firebase.auth().onAuthStateChanged(function (user) {
+    if (user) {
+      // User is signed in.
+      setUser(user);
+      console.log(user.uid);
+    } else {
+      // No user is signed in.
+      console.log("User Does not exist");
+      setUser(null);
+    }
+  });
+  // doSome(user.uid, "Anonymouse clout", "Weeber",  "NO-EMAIL")
 
   const AuthStackScreen = (user) => {
     return (
@@ -82,7 +90,10 @@ export default function App() {
           name="PhoneSignInScreen"
           component={PhoneSignInScreen}
         />
-        <AuthStack.Screen name="EmailAndPassword" component={EmailAndPassword}/>
+        <AuthStack.Screen
+          name="EmailAndPassword"
+          component={EmailAndPassword}
+        />
         <AuthStack.Screen name="LoggedIn" component={LoggedInScreen} />
       </AuthStack.Navigator>
     );
@@ -91,34 +102,6 @@ export default function App() {
   // State management using React hooks/ Context
   const authContext = React.useMemo(() => {
     return {
-      signinWithEmailAndPass: () => {
-        Firebase.auth()
-          .signInWithEmailAndPassword(props.emailAddress, props.password)
-          .then((res) => {
-            console.log("User logged-in  to firebase successfully!");
-            // setUser(user);
-            Firebase.auth().onAuthStateChanged(function (user) {
-              if (user) {
-                // User is signed in.
-                setUser(user);
-                console.log(user.uid);
-              } else {
-                // No user is signed in.
-                setUser(null);
-              }
-            });
-          })
-          .catch((error) => {
-            Alert.alert(
-              "Wrong credentials",
-              "", // <- this part is optional, you can pass an empty string
-              [{ text: "OK", onPress: () => console.log("OK Pressed") }],
-              { cancelable: false }
-            );
-            console.log("unable to login through fireabser", error);
-          });
-      },
-
       signInWithEmailOnly: () => {},
     };
   }, []);
@@ -126,7 +109,6 @@ export default function App() {
   return (
     <AuthContext.Provider value={authContext}>
       <NavigationContainer>
-        {/* <RootStackScreen user={user} /> */}
         <AuthStackScreen user={user} />
       </NavigationContainer>
     </AuthContext.Provider>
@@ -138,13 +120,43 @@ export const ScreenContainer = ({ children }) => (
 );
 
 export const Home = ({ navigation }) => {
+  const { URLSchemes } = AppAuth;
+  const signInWithGoogle = () =>
+    GoogleAuthentication.logInAsync({
+      androidStandaloneAppClientId:
+        "26984943290-0he0akttpofpe143p0212e2d5h674f35.apps.googleusercontent.com",
+      iosStandaloneAppClientId:
+        "26984943290-u89j882k6lrs7afnem90ulf6dgmh2vp9.apps.googleusercontent.com",
+      scopes: ["profile", "email"],
+    })
+      .then((logInResult) => {
+        if (logInResult.type === "success") {
+          navigation.push("Home2", { name: "React Native School" });
+          console.log("succeeded");
+          const { idToken, accessToken } = logInResult;
+          const credential = Firebase.auth.GoogleAuthProvider.credential(
+            idToken,
+            accessToken
+          );
+
+          return Firebase.auth().signInWithCredential(credential);
+          // Successful sign in is handled by firebase.auth().onAuthStateChanged
+        }
+        return Promise.reject(); // Or handle user cancelation separatedly
+      })
+      .catch((error) => {
+        console.log(error);
+        // ...
+      });
   return (
     <ScreenContainer>
       <Text>Authentication List</Text>
       <Button
         title="Email and Password"
         onPress={() =>
-          navigation.navigate("EmailAndPassword", { name: "React Native School" })
+          navigation.navigate("EmailAndPassword", {
+            name: "React Native School",
+          })
         }
       />
       <Button
@@ -161,21 +173,51 @@ export const Home = ({ navigation }) => {
       />
       <Button
         title="Facebook"
-        onPress={() =>
-          navigation.push("Home2", { name: "React Native School" })
-        }
+        onPress={async () => {
+          try {
+            const { type, token } =
+              await Facebook.logInWithReadPermissionsAsync("238653818236056", {
+                permissions: ["public_profile"],
+              });
+            if (type === "success") {
+              await Firebase.auth().setPersistence(
+                Firebase.auth.Auth.Persistence.LOCAL
+              );
+              const credential =
+                Firebase.auth.FacebookAuthProvider.credential(token);
+              const facebookProfileData =
+                await Firebase.auth().signInWithCredential(credential);
+              navigation.push("LoggedIn", { name: "Logged" });
+            }
+          } catch ({ message }) {
+            alert(`Facebook Login Error: ${message}`);
+            console.log(message);
+          }
+        }}
       />
       <Button
         title="Google"
-        onPress={() =>
-          navigation.push("Home2", { name: "React Native School" })
-        }
+        onPress={() => {
+          signInWithGoogle().then(() => console.log("Signed in with Google!"));
+        }}
       />
       <Button
         title="Anonymous"
-        onPress={() =>
-          navigation.push("Home2", { name: "React Native School" })
-        }
+        onPress={() => {
+          Firebase.auth()
+            .signInAnonymously()
+            .then(() => {
+              console.log("User signed in anonymously");
+            })
+            .catch((error) => {
+              if (error.code === "auth/operation-not-allowed") {
+                console.log("Enable anonymous in your firebase console.");
+              }
+
+              console.error(error);
+            });
+          navigation.push("LoggedIn", { name: "Logged in" });
+        }}
       />
     </ScreenContainer>
   );
@@ -186,7 +228,7 @@ export const LoggedInScreen = ({ navigation }) => {
     <ScreenContainer>
       <Text>Logged In</Text>
       <Button
-        title="Anonymous"
+        title="Sign out"
         onPress={() => {
           Firebase.auth()
             .signOut()
@@ -303,8 +345,8 @@ export const PhoneSignInScreen = ({ navigation }) => {
   );
 };
 export const EmailAndPassword = ({ navigation }) => {
-  const [emailAddress, setemailAddress] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [emailAddress, setemailAddress] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [SignUpErrors, setSignUpErrors] = React.useState({});
   const [user, setUser] = React.useState(null);
 
@@ -336,21 +378,7 @@ export const EmailAndPassword = ({ navigation }) => {
                 .signInWithEmailAndPassword(emailAddress, password)
                 .then((res) => {
                   console.log("User logged-in  to firebase successfully!");
-                  setUser(user);
-                  Firebase.auth().onAuthStateChanged(function (user) {
-                    if (user) {
-                      // User is signed in.
-                    setUser(user);
-
-                      navigation.navigate("LoggedIn")
-                      console.log(user.uid);
-                    } else {
-                      // No user is signed in.
-                  console.log("User Does not exist");
-                  setUser(null);
-
-                    }
-                  });
+                  navigation.navigate("LoggedIn");
                 })
                 .catch((error) => {
                   Alert.alert(
@@ -363,41 +391,11 @@ export const EmailAndPassword = ({ navigation }) => {
                 });
             }}
           />
-          <Text
-            style={{ marginLeft: 100 }}
-            onPress={() => {
-              navigation.navigate("Signup");
-            }}
-          >
-            No Acount? Sign Up
-          </Text>
         </Card>
       </View>
     </ScreenContainer>
   );
 };
-
-export const FaceBookSignin=({navigation})=>{
-  try {
-    const { type, token } = await Facebook.logInWithReadPermissionsAsync('684399708713036', {
-      permissions: ['public_profile'],
-    });
-    if (type === 'success') {
-      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-      const credential = firebase.auth.FacebookAuthProvider.credential(token);
-      const facebookProfileData = await firebase.auth().signInWithCredential(credential);
-      this.onLoginSuccess.bind(this)
-    }
-  } catch ({ message }) {
-    alert(`Facebook Login Error: ${message}`);
-  }
-
-  return(
-    <ScreenContainer>
-
-    </ScreenContainer>
-  )
-}
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -16,13 +16,22 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "facebookScheme": "fb238653818236056",
+    "facebookAppId": "238653818236056",
+    "facebookDisplayName": "midterm",
+    "facebookAutoInitEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gsu.midterm",
+      "buildNumber": "1.0.0"
     },
     "android": {
+      "package": "com.gsu.midterm",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
+        
       }
     },
     "web": {
