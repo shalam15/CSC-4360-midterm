@@ -1,21 +1,24 @@
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useEffect } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TextInput,
   TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { AuthContext } from "./context";
-import { Input, Button, Card } from "react-native-elements";
+import { Input, Button, Card, ListItem, Avatar } from "react-native-elements";
 import {
   FirebaseRecaptchaVerifierModal,
   FirebaseRecaptchaBanner,
 } from "expo-firebase-recaptcha";
 import * as Facebook from "expo-facebook";
+import { AntDesign, SimpleLineIcons } from "@expo/vector-icons";
 
 import * as GoogleAuthentication from "expo-google-app-auth";
 // import * as GoogleSignIn from "expo-google-sign-in";
@@ -38,7 +41,11 @@ const firebaseConfig = {
   messagingSenderId: "26984943290",
   appId: "1:26984943290:web:5b2ce7192214e45e24bc83",
 };
-Firebase.initializeApp(firebaseConfig);
+if (!Firebase.apps.length) {
+  Firebase.initializeApp(firebaseConfig);
+} else {
+  Firebase.app(); // if already initialized, use that one
+}
 
 const doSome = (uid, firstName, lastName, userEmail) => {
   Firebase.firestore()
@@ -94,7 +101,9 @@ export default function App() {
           name="EmailAndPassword"
           component={EmailAndPassword}
         />
+        <AuthStack.Screen name="EmailOnly" component={EmailOnly} EmailOnly />
         <AuthStack.Screen name="LoggedIn" component={LoggedInScreen} />
+        <AuthStack.Screen name="Profile" component={ProfileScreen} />
       </AuthStack.Navigator>
     );
   };
@@ -155,15 +164,13 @@ export const Home = ({ navigation }) => {
         title="Email and Password"
         onPress={() =>
           navigation.navigate("EmailAndPassword", {
-            name: "React Native School",
+            name: "EmailNAdpassword",
           })
         }
       />
       <Button
         title="Email without password"
-        onPress={() =>
-          navigation.push("Home2", { name: "React Native School" })
-        }
+        onPress={() => navigation.push("EmailOnly", { name: "EmailOnly" })}
       />
       <Button
         title="Phone Number"
@@ -222,22 +229,103 @@ export const Home = ({ navigation }) => {
     </ScreenContainer>
   );
 };
-
-export const LoggedInScreen = ({ navigation }) => {
+export const CustomListItem = ({ id, firstName, email, navigation , enterProfile, datetime}) => {
   return (
-    <ScreenContainer>
-      <Text>Logged In</Text>
-      <Button
-        title="Sign out"
-        onPress={() => {
-          Firebase.auth()
-            .signOut()
-            .then(() => console.log("User signed out!"))
-            .catch((error) => console.log(error));
-          navigation.push("Home", { name: "React Native School" });
+    <ListItem
+      onPress={() => {console.log(firstName, email) , enterProfile(id, firstName, email)}}
+      key={id}
+      bottomDivider
+    >
+      <Avatar
+        rounded
+        source={{
+          uri: "https://picsum.photos/200",
         }}
       />
-    </ScreenContainer>
+      <ListItem.Content>
+        <ListItem.Title style={{ fontWeight: "800" }}>
+          {firstName}
+        </ListItem.Title>
+        <ListItem.Subtitle numberOfLines={1} ellipsizeMode="tail">
+          {email}
+        </ListItem.Subtitle>
+        <ListItem.Subtitle numberOfLines={1} ellipsizeMode="tail">
+         Date Joined:  {JSON.stringify(datetime)}
+        </ListItem.Subtitle>
+      </ListItem.Content>
+    </ListItem>
+  );
+};
+
+export const LoggedInScreen = ({ navigation }) => {
+  const [users, setUsers] = React.useState([]);
+  useEffect(() => {
+    const unsubscribe = Firebase.firestore()
+      .collection("allusers")
+      .onSnapshot((snapshot) =>
+        setUsers(
+          snapshot.docs.map((doc) => ({
+            id: doc.id,
+            data: doc.data(),
+          }))
+        )
+      );
+    return unsubscribe;
+  }, []);
+  navigation.setOptions({
+    title: "Home",
+    headerStyle: { backgroundColor: "#fff" },
+    headerTitleStyle: { color: "black" },
+    headerTintColor: "black",
+
+    headerRight: () => (
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          width: 80,
+          marginRight: 20,
+        }}
+      >
+      
+        <TouchableOpacity
+          onPress={() => {
+            Firebase.auth()
+              .signOut()
+              .then(() => console.log("User signed out!"))
+              .catch((error) => console.log(error));
+            navigation.push("Home", { name: "React Native School" });
+          }}
+        >
+           <Text>Sign out</Text>
+        </TouchableOpacity>
+      </View>
+    ),
+  });
+
+  const enterProfile =(uid, firstName, email, datetime) => {
+navigation.navigate("Profile", {
+  uid, id, firstName, email, datetime
+});
+  };
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
+      <StatusBar style="light" />
+      <Text>Logged In</Text>
+      <ScrollView style={styles.container2}>
+        {users.map(({ id, data: {uid, firstName, email , datetime} }) => (
+          <CustomListItem
+            key={id}
+            id={id}
+            uid={uid}
+            firstName={firstName}
+            email={email}
+            datetime={datetime}
+            enterProfile={enterProfile}
+          />
+        ))}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -352,7 +440,7 @@ export const EmailAndPassword = ({ navigation }) => {
 
   return (
     <ScreenContainer>
-      <View>
+      <View style={styles.EMP}>
         <Card>
           <Input
             label={"Email"}
@@ -396,11 +484,88 @@ export const EmailAndPassword = ({ navigation }) => {
     </ScreenContainer>
   );
 };
+export const EmailOnly = ({ navigation }) => {
+  const [emailAddress, setemailAddress] = React.useState("");
+  const [SignUpErrors, setSignUpErrors] = React.useState({});
+
+  return (
+    <ScreenContainer>
+      <View style={styles.EMP}>
+        <Card>
+          <Input
+            label={"Email"}
+            placeholder="Email"
+            value={emailAddress}
+            onChangeText={setemailAddress}
+            errorStyle={{ color: "red" }}
+            errorMessage={SignUpErrors ? SignUpErrors.email : null}
+          />
+
+          <Button
+            buttonStyle={{ margin: 10, marginTop: 50 }}
+            title="Sign in"
+            onPress={() => {
+              navigation.navigate("LoggedIn");
+              // Firebase.auth()
+              //   .signInWithEmailAndPassword(emailAddress, password)
+              //   .then((res) => {
+              //     console.log("User logged-in  to firebase successfully!");
+              //     navigation.navigate("LoggedIn");
+              //   })
+              //   .catch((error) => {
+              //     Alert.alert(
+              //       "Wrong credentials",
+              //       "", // <- this part is optional, you can pass an empty string
+              //       [{ text: "OK", onPress: () => console.log("OK Pressed") }],
+              //       { cancelable: false }
+              //     );
+              //     console.log("unable to login through fireabser", error);
+              //   });
+            }}
+          />
+        </Card>
+      </View>
+    </ScreenContainer>
+  );
+};
+
+export const ProfileScreen = ({ navigation, route }) => {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
+      <View>
+      <Avatar
+        rounded
+        source={{
+          uri: "https://picsum.photos/200",
+        }}
+      />
+        <Text>{route.params.uid}</Text>
+        <Text>{route.params.firstName}</Text>
+        <Text>{route.params.email}</Text>
+        <Text>{route.params.datetime}</Text>
+
+        <Button
+        title="Go Back"
+        onPress={() =>
+          navigation.goBack()
+        }
+      />
+      </View>
+    </SafeAreaView>
+  );
+};
 const styles = StyleSheet.create({
+  EMP:{
+width:"100%"
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  container2: {
+    height: "100%",
   },
 });
